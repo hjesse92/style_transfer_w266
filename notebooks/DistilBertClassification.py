@@ -22,7 +22,7 @@ else:
 # Initiate loss to Binary Cross Entropy
 criterion = nn.BCELoss()
 
-# DistilBERT Model
+# DistilBERT Model 1 hidden layer
 class BertClassification(nn.Module):
     def __init__(self, output_dim=1, hidden_size=384, dropout=0.2):
         super(BertClassification, self).__init__()
@@ -48,6 +48,53 @@ class BertClassification(nn.Module):
         hidden_ouput = self.ReLU(self.hidden_layer(cls_token))
 
         hidden_ouput = self.drop_out(hidden_ouput)
+        output = self.Sigmoid(self.classification(hidden_ouput))
+        output = output.flatten()
+
+        return output
+        
+        
+
+# DistilBERT Model 2 hidden layers        
+class BertClassificationML(nn.Module):
+    """"DistilBERT with 2 hidden layers and option to unfreeze the last transformer layer"""
+    def __init__(self,output_dim=1, hidden_size=256, hidden_size2=32, dropout=0.1, unfreeze=False):
+        super(BertClassificationML, self).__init__()
+        self.bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased')
+
+        # Unfreeze the last DistilBERT transformer layer
+        if unfreeze:
+            for name, param in self.bert_model.named_parameters():
+                if 'transformer.layer.5.' in name:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
+
+        self.bert_hidden_size = self.bert_model.config.hidden_size
+        self.hidden_size = hidden_size
+        self.hidden_size2 = hidden_size2
+        self.hidden_layer = nn.Linear(self.bert_hidden_size, self.hidden_size)
+        self.hidden_layer2 = nn.Linear(self.hidden_size, self.hidden_size2)
+
+        self.drop_out = nn.Dropout(dropout)
+
+        self.classification = nn.Linear(self.hidden_size2, output_dim)
+
+        self.GeLU = nn.GELU()
+        self.Sigmoid = nn.Sigmoid()
+        
+    def forward(self, input_ids, attention_mask):
+        bert_output = self.bert_model(input_ids=input_ids, 
+                                      attention_mask=attention_mask)
+        
+        # hidden_state = bert_output[0]
+        cls_token = bert_output[0][:,0]
+
+        hidden_ouput = self.GeLU(self.hidden_layer(cls_token))
+        hidden_ouput = self.drop_out(hidden_ouput)
+        hidden_ouput = self.GeLU(self.hidden_layer2(hidden_ouput))
+        hidden_ouput = self.drop_out(hidden_ouput)
+
         output = self.Sigmoid(self.classification(hidden_ouput))
         output = output.flatten()
 
@@ -117,7 +164,6 @@ def compute_metrics(outputs, targets):
     f1 = f1_score(y_true= y_true, y_pred=y_pred)
     # roc_auc = roc_auc_score(y_true, y_pred)
     accuracy = accuracy_score(y_true, y_pred)
-    # accuracy = np.sum(y_pred == y_true) / len(y_true)
 
     print ("Accuracy {:0.4f} \n".format(accuracy))
     
