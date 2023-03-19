@@ -1,11 +1,14 @@
 import torch
 from logging import warning
 import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader, RandomSampler, SequentialSampler, TensorDataset
+
 from transformers import DistilBertTokenizer, DistilBertModel
 from sklearn.metrics import f1_score, roc_auc_score, accuracy_score
 
 
 import numpy as np
+import pandas as pd
 import os
 import shutil
 import time
@@ -103,7 +106,67 @@ class BertClassificationML(nn.Module):
 		
 def format_time(seconds):
     return str(datetime.timedelta(seconds=int(round(seconds))))
-	
+
+
+## Create data loader for inference
+def NonToxicScoreDataLoader(output_file, output_col):
+    output_df = pd.read_csv(output_file, sep="\t")
+
+    # Load DistilBERT tokenizer
+    bert_tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+
+    # Max_length used from pretrained model
+    max_length = 64
+
+    output_encodings = bert_tokenizer(
+        list(output_df[output_col].values), 
+        max_length=max_length,
+        truncation=True,
+        pad_to_max_length=True, 
+        return_tensors='pt'
+    )
+
+    input_ids = output_encodings.input_ids.to(device, dtype = torch.long)
+    attention_mask = output_encodings.attention_mask.to(device, dtype = torch.long)
+    # labels = torch.zeros(output_df[output_col].shape[0])
+
+    output_dataset = TensorDataset(input_ids, attention_mask)
+    output_loader = DataLoader(output_dataset, batch_size=16)
+
+
+    return output_loader
+
+
+## Calculate NonToxicScore function
+def NonToxicScore(output_loader, model, verbose=True):
+    # Initialize
+    outputs=[]
+
+    # switch to evaluate mode
+    model.eval()
+
+    with torch.no_grad():
+        for step, data in enumerate(output_loader):
+            
+            # send the data to cuda device
+            ids = data[0].to(device, dtype = torch.long)
+            mask = data[1].to(device, dtype = torch.long)
+
+            # compute output / NonToxicScore
+            output = model(input_ids=ids,
+                           attention_mask=mask)
+
+            outputs.extend(output.cpu().detach().numpy().tolist())
+      
+
+    avg_NonToxicScore = np.mean(outputs)
+    metrics = {"NonToxicScore": avg_NonToxicScore}
+    # elapsed_time = time.time() - t0
+    if verbose:
+      print(metrics)
+    
+    return outputs, metrics
+  
 	
 ## Define validate function
 def validate(val_loader, model, criterion=criterion, verbose=False):
