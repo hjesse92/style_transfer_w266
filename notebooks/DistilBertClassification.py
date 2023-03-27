@@ -109,15 +109,14 @@ def format_time(seconds):
 
 
 ## Create data loader for inference
-def NonToxicScoreDataLoader(output_file, output_col):
+def NonToxicScoreDataLoader(output_file, output_col, max_length=512):
     output_df = pd.read_csv(output_file, sep="\t")
 
     # Load DistilBERT tokenizer
     bert_tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
 
     # Max_length used from pretrained model
-    max_length = 64
-
+    # max_length = 64
     output_encodings = bert_tokenizer(
         list(output_df[output_col].values), 
         max_length=max_length,
