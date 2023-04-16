@@ -1,0 +1,368 @@
+% This must be in the first 5 lines to tell arXiv to use pdfLaTeX, which is strongly recommended.
+\pdfoutput=1
+% In particular, the hyperref package requires pdfLaTeX in order to break URLs across lines.
+
+\documentclass[11pt]{article}
+% \documentclass[conference,a4paper]{IEEEtran}
+\usepackage{graphicx}
+\usepackage{titlesec}
+% \IEEEoverridecommandlockouts
+\usepackage{float}
+% Remove the "review" option to generate the final version.
+\usepackage[review]{ACL2023}
+
+% Standard package includes
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{hyperref}
+% For proper rendering and hyphenation of words containing Latin characters (including in bib files)
+\usepackage[T1]{fontenc}
+\usepackage{tabularx}
+% For Vietnamese characters
+% \usepackage[T5]{fontenc}
+% See https://www.latex-project.org/help/documentation/encguide.pdf for other character sets
+
+% This assumes your files are encoded as UTF8
+\usepackage[utf8]{inputenc}
+
+% This is not strictly necessary, and may be commented out.
+% However, it will improve the layout of the manuscript,
+% and will typically save some space.
+\usepackage{microtype}
+
+% This is also not strictly necessary, and may be commented out.
+% However, it will improve the aesthetics of text in
+% the typewriter font.
+\usepackage{inconsolata}
+\setlength{\arrayrulewidth}{0.5mm}
+\setlength{\tabcolsep}{18pt}
+\renewcommand{\arraystretch}{1.5}
+
+% If the title and author information does not fit in the area allocated, uncomment the following
+
+% \setlength\titlebox{5}
+
+% and set <dim> to something 5cm or larger.
+% \usepackage{titling}
+% \pretitle{\begin{flushleft}\LARGE\sffamily} \\
+% \posttitle{\end{flushleft}}
+% \renewcommand\Authfont{\fontsize{12}{14.4}\selectfont}
+% \renewcommand\Affilfont{\fontsize{9}{10.8}\itshape}
+
+
+\title{Neutralize Toxic Texts: Using Transfer Learning And Transformer Models}
+
+\author{
+    Mai~La \\ \small\rmfamily\upshape University of California, Berkeley \\
+    \small\rmfamily\upshape {mai.la@berkeley.edu} \\ \And
+    Jesse~He \\
+    \small\rmfamily\upshape University of California, Berkeley \\
+    \small\rmfamily\upshape {hjesse92@berkeley.edu} \\ \And
+    Shivangi~Pandey \\
+    \small\rmfamily\upshape University of California, Berkeley \\
+    \small\rmfamily\upshape {shivangi.pandey@berkeley.edu} }
+
+
+\begin{document}
+% \maketitle
+{\makeatletter\acl@finalcopytrue
+  \maketitle
+}
+
+  
+\begin{abstract}
+Exposure to negative, abusive, and toxic content on social media can have detrimental effects on an individual's mental health. To mitigate these effects, researchers and companies are actively working on removing toxic comments or altering them automatically using various Natural Language Processing techniques. In this paper, we demonstrate the effectiveness of different pre-trained transformer architectures in neutralizing toxic text, including generative language models and text-to-text encoder-decoder based models. We found that treating the detoxification task as a translation task with encoder-decoder models allows for better semantic grounding at the cost of less effective detoxification, decoder-only models are more effective in generating text in a desired tone and style at the cost of slight semantic deviation. Future work to improve model performance could include using a disentanglement technique to train on a larger pair-to-pair dataset to achieve both objectives without a tradeoff. To facilitate future research, we release the code on GitHub\footnote{\url{https://github.com/hjesse92/style_transfer_w266}}.
+\end{abstract}
+
+\section{Introduction}
+
+The proliferation of online presence has increased accessibility to express and exchange information via social media and online communities. With increased accessibility and anonymity, toxic environments permeate on online platforms \hyperref[sec:Ascher]{(Ascher, 2019)}. The spread of toxic content has attracted researchers and companies to automatically remove toxic contents using AI systems. \\
+Toxic content can materialize in different ways through a mix of semantics or tone. While simply removing toxic text has been a quick and reasonable solution, it could potentially result in information loss or reduce diversity and user retention \hyperref[sec:Jhaver]{(Jhaver et al., 2019)}. Some would even go as far as considering the removal of toxic content as “censorship”. \\
+For instance, in a sentence such as \textit{“f*** u, u ruined my day”} contains toxic words, and a naive solution of simply removing or replacing the toxic text can detoxify the sentence.  Contrast this with a sentence such as, \textit{“I wish you a major accident and a painful stroke”}; this is a toxic sentence without any toxic words, but contains severe toxicity in tone. Hence, detoxifying this sentence requires a more complex approach.  In our work, we built text detoxification models aimed to neutralize the toxic sentences in order to best preserve the overall semantic content of the original text yet turn it into inoffensive sentences.
+
+\section{Background}
+
+Filtering out toxic words and phrases has been the standard of content moderation. This approach is commonly referred to as \textbf{ban-listing}. A basic method of this approach is \textbf{word filtering}, which is an intuitive and effective way to filter out profanity in toxic text. However, this method begins failing when the toxicity becomes more embedded from word and style choices, such as the second example above. Detoxification would then require more complex approaches such as text generation. \textbf{Vocabulary shifting} \hyperref[sec:Gehman]{(Gehman et al. 2020)}, a different method of ban-listing, learns a 2-dimensional representation of toxicity versus non-toxicity for every token in the vocabulary of the pretrained model. The representation that encodes the non-toxicity is used to boost the likelihood of non-toxic tokens when generating text. \textbf{Prompt based detox} is another approach using the internal knowledge of a pre-trained language model such as GPT3 \hyperref[sec:Brown]{(Brown et al., 2020)} to reduce the probability of undesired attributes in the model generation. For instance, prompts such as “Rewrite the toxic text in non-toxic style.” are prepended to input sequence to detoxify using a language model or a sequence-to-sequence model.
+
+Text-style disentanglement is an approach that can detoxify text that draws inspirations from recommender systems such as the architecture proposed in the paper Deep Learning and Embedding Based Latent Factor Model for Collaborative Recommender Systems  \hyperref[sec:Tegene]{(Tegene et al., 2023)}: if we can decompose an embedding matrix in terms of k different latent representations, where the dot-product of the latent representations recreates the embedding matrix, then we can learn from the properties of those latent spaces. Previous work using the disentanglement approach is the Context-Aware Style Transfer (CAST) model \hyperref[sec:Cheng]{(Cheng et al., 2020)} which used non-parallel data, however cited by \hyperref[sec:Atwell]{(Atwell et al, 2022)}.  that the text generated could “drastically alter the intended meaning when fine-tuned”, therefore proposed a more grounded Discourse-aware Transformer-based Style Transfer Model.
+
+Traditional methods treat style transfer as similar to a translation task and hence mostly use the encoder - decoder models such as T5 \hyperref[sec:Raffel]{Raffel et al., 2019} and BART \hyperref[sec:Lewis]{Lewis et al., 2019}.  We drew inspiration from both Tegene et al. and Cheng et al. in creating a novel text-style disentanglement architecture for text detoxification.
+
+\section{Data}
+
+\subsection{APPDIA - Inoffensive Social Media Conversations Transfer Dataset}
+
+The APPDIA dataset1 is a parallel corpus consisting of roughly 2K offensive Reddit short comments and their style transferred, inoffensive equivalents as outlined in the \hyperref[sec:Atwell]{Atwell et. al}  paper. Sociolinguistic experts had meticulously annotated this dataset, with the primary goal of removing offensiveness from the original comments while retaining their meaning or intent (Appendix B).
+This was the dataset that we used in our research to perform text detoxification.
+
+\subsection{Jigsaw Toxic Classification Dataset}
+
+The Jigsaw classification dataset\footnote{\url{https://www.kaggle.com/competitions/jigsaw-toxic-comment-classification-challenge/data}} was used to train a classification model to score toxicity in sentences. This dataset is a collection of comments from Wikipedia, Reddit and social media that have been labeled by human moderators and published as part of a Kaggle competition. The toxic comments in the dataset include: toxics, insults, obscenities, threats and identity hate. In our study, we grouped all different toxic categories into a single toxic class for training. There were roughly 16K toxic comments, and about 143K of neutral comments. This created class imbalance, which we will address in the Methods section below.
+
+\section{Methods}
+
+\subsection{Evaluation Criteria and Tradeoffs}
+
+We employed two main evaluation metrics, ROUGE scores and NonToxicScore, to evaluate the quality of the detoxification task. These two metrics were chosen because ROUGE provided a granular assessment of content preservation and fluency through the identification of salient phrases within text n-grams, and NonToxicScore measured the effectiveness of transforming toxic tone into a neutral tone. The NonToxicScore was derived from training a toxic classification model on the Jigsaw dataset and computed average probabilities of generated comments’ being non-toxic (see Appendix C for examples of calculation). The average of all the NonToxicScores on the generated texts were the cumulative metric that we used to evaluate the goodness of detoxifying sentences. In evaluating the overall goodness of a detoxification model, the best model should score highest in ROUGE scores and the NonToxicScore.
+
+Macro F1 score was chosen as the primary metric for evaluating the classification model outputting the NonToxicScore, which balanced precision and recall for accurate toxic and non-toxic text classification. The model used 50\% NonToxicScore as the classification threshold.
+
+\subsection{Models}
+
+\subsubsection{Part 1: Classification Task for NonToxicScore}
+
+To optimize the performance of our classification model for obtaining NonToxicScores, we conducted a series of experiments on both the model architecture and the training data.
+
+\textbf{Experiments with the Model}
+
+We experimented with pre-trained BERT (Devlin et al., 2018) and DistilBERT (Sanh et al., 2019). We chose these two models because while BERT was a larger model, DistilBERT offered comparable performance with increased speed and resource efficiency in many NLP tasks.
+
+For model architecture, we tested two configurations. The first one had a single feed-forward layer with 768 neurons, and the second one had two smaller feed-forward layers with 256 and 32 neurons on top of the CLS tokens. We also investigated the effectiveness of freezing versus unfreezing some or all of DistilBERT layers to identify the best model for extracting NonToxicScores.
+
+\textbf{Experiments with the Data}
+
+In data manipulation, we addressed the class imbalance in the Jigsaw dataset (Section 3) by experimenting with both upsampling and downsampling techniques. Based on Wei and Zou (2019), we employed a text-data augmentation technique to enhance classification performance by using the nlpaug library. This programmatically replaced certain words with their synonyms during the upsampling process, increasing the number of toxic records in the Jigsaw dataset (Appendix D). Hence, upsampling would create non-duplicate synthetic training data for the minority class.
+
+\subsubsection{ Part 2: Text Style Transfer Task}
+
+We explored the three different approaches for neutralizing toxic text. The first approach was a decoder-only approach using generative language models GPT2 (A. Radford et al., 2019) and GPT-Neo (Black et al., 2021). Here we expect that simply the model with more parameters would perform better. With some prompt engineering and few-shot learning (Brown et al., 2020), we leveraged the generative language models as a baseline for what detoxifying text would look like. Then we performed fine-tuning of these language models to improve the performance in detoxifying texts. 
+
+The second approach was using encoder-decoder models T5 and BART , which are most appropriate for the text style transfer task. This is because detoxifying text is most analogous to a translation task, so we hypothesized that fine-tuned encoder-decoder models would perform the best for text-style transfer.We also built a custom BART model (Figure 1) with dual encoders and masking the profane words as inspired by how BART was pre-trained such as corrupting documents then optimizing a reconstruction loss. We hypothesize that by masking the profane words, we force the model to remove or replace these words with more appropriate ones during training. This is a proactive bad word filtering and vocabulary shifting technique as discussed in Section 2, and this approach is not included in the original BART single encoder models. 
+
+The last approach was a more granular approach, where we built a text-style disentanglement architecture from scratch. 
+
+\textbf{Generative Language Models:}
+
+ Brown et al. (2020) explained large language models are able to learn from a prompt and a few examples to perform customized tasks, in our case it could be used for text detoxification.Since GPT3, the underlying model by Brown et al. (2020), is not available publicly , we performed few-shot learning on GPT2 (A. Radford et al., 2019), a 1.5B transformer language model from OpenAI, and on the 2.7B GPT-Neo (Black et al., 2021), a model designed by EleutherAI's replication of the GPT-3 architecture (Appendix E). We chose to use GPT2 with few-shot learning as the baseline model because it is readily available and fairly easy to use. We expected that GPT-Neo, the larger, open-source and GPT-3 analogous model to produce better, more coherent, and less toxic text-style transfers.
+
+We acknowledge the drawbacks of using the generative learning model for this task, which are that a generative language model would find limited success even with few-shot learning. Therefore, we further fine tuned these GPT2 and 1.3B GPT-Neo models on our parallel data to enhance detoxification. We also appended the “Toxic text”, and “Non-toxic text” in preceding of the toxic sentences and its counterparts in the prompt to let the models learn the pattern in order to generate non-toxic text yet still preserve the meaning of the original context.  Note that we did not fine tune GPT-Neo 2.7B due to resource constraints.
+
+\textbf{Encoder-Decoder Models:}
+
+Since the style-transfer task can be thought of as a translation task, we hypothesized that using encoder-decoder models might be the most appropriate approach. We elected three different approaches for using the encoder-decoder models. The first approach was using the pretrained FLAN T5 model (Raffel et al., 2019), which is a 250M parameter multitask-learning text-to-text transformer model trained by Google. Since this model was not specifically trained for the detoxifying text, we expected that fine-tuning the model would produce better results.
+
+The second approach was using the pretrained BART models (M. Lewis et al., 2019), which is a 140M parameter (BART base) or 400M parameter (BART large) pre-trained model for natural language generation, translation, and comprehension from Facebook/Meta. Of all the models mentioned, we hypothesized that fine-tuned BART large will produce the best results for a few reasons: \\
+- The encoder-decoder architecture seems most fitting for a translation task, and if we think of text-style-transfer as a translation task, BART would be the most appropriate pre-trained model for this task\\
+- Since BART is the most appropriate model for text-style-transfer, fine-tuning BART should produce the most stable and high-quality outputs.\\
+- BART large has more parameters than BART base, and simply having more parameters should yield results closer to the actual output\\
+Lastly, we also built a custom BART model (Figure 1) with dual encoders and masking the profane words as inspired by how BART was pre-trained such as corrupting documents then optimizing a reconstruction loss. We hypothesize that by masking the profane words, we force the model to remove or replace these words with more appropriate ones during training. This is a proactive bad word filtering and vocabulary shifting technique as discussed in section 2, and this approach is not included in the original BART single encoder models. Our intuition is that having separate encoders for the source and target styles would allow the model to more finely capture the nuances and differences between the two styles, whereas a single encoder BART model may not perform well in preserving the meaning of the input text as they focus mainly on generating text in the target style. Therefore, given equal model size (BART base), we expected the dual encoder-decoder model to work better than the single encoder BART models for text style transfer tasks.\\
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=8cm]{BartDualEncoderDecoder}
+    \caption{BART Dual Encoders-Decoder Architecture for Text Style Transfer. The architecture includes an encoder from BartModel followed by another encoder-decoder from BartForConditionalGeneration with a language model head (both use BART base parameters). The first encoder takes the original toxic input text which generates a contextualized representation, and a masked sequence is passed to the second encoder for generating style representation. The first encoder’s last hidden layer is passed as cross attention to the decoder which is used to generate the output text in the desired neutral style}
+    \label{fig:galaxy}
+\end{figure}
+
+\section{Text-Style Disentanglement Model}
+
+We devised a custom architecture with multiple encoders and decoders to separate semantics and style in offensive and neutralized texts, based on the assumption that sentences can be decomposed as latent representations of semantics and style. This resembles Tegene et al.'s decomposition of a ratings matrix. With parallel text, we assume toxic and neutralized texts share semantics, and neutralized text does not change the meanings of sentence (Appendix B). During inference, the learned neutralized style is applied to the semantics extracted from the toxic text, producing neutralized text.
+
+Unlike Tegene et al., we employed simpler architectures for style transfer: independent linear projections of semantics and style representations for both toxic and neutralized text, and an autoencoder architecture with the bottleneck latent representations split between semantics and style.
+
+For both approaches, a custom loss function was needed for disengagement. We optimized for similarity loss between toxic and non-toxic semantic vectors, orthogonal loss between toxic style and semantic vectors, and token similarity loss between predicted logits and target text token IDs.
+
+For architectures that involved different encoders and decoders such as BERT and GPT2, we used a mapping layer between output and prediction layers in order to connect the encoder tokens to the decoder tokens.
+
+\section{Results and Discussion}
+
+\subsection{Classification Task}
+
+DistilBERT was our main choice for further fine tuning given its comparable performance to BERT for the classification task. The final chosen DistilBERT model achieved the F1 score of 94.4\% with upsampling and augmentation procedure applied to the Jigsaw data set (Table 1). This model includes a two-layer feed-forward network on top of the CLS tokens with frozen DistilBERT parameters and trained with 512 tokens.
+
+\begin{table*}[ht]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lllll}
+\hline
+ {} &Max Length = 64 &{} &Max Length = 512 &{} \\
+\hline
+Model &F1 Score &Accuracy &F1 Score &Accuracy \\
+\hline
+BERT - 1 layer + Undersampling &90.8 &93.1 &- &- \\
+DistilBERT - 1 layer + Undersampling &92.6 &92.6 &94.3 &94.3 \\
+DistilBERT - 2 layers + Undersampling &93.1 &93.0 &94.6 &94.6 \\
+DistilBERT - 2 layers + Upsampling with Augmentation &92.9 &92.9 &94.4 &94.4 \\
+\hline
+\end{tabular}}
+Table 1: Toxic and non-toxic classification evaluation on Jigsaw test set with fine-tuned BERT and DistilBERT model.  
+\end{table*}
+
+The two-layer DistilBERT model with undersampling performs slightly better than the upsampling model with augmentation on the Jigsaw dataset, however, the upsampling model with augmentation is more generalized and performs the better when classifying the non-toxic texts on the APPDIA dataset (Table 2).In addition, while undersampling achieved better accuracy on toxic text than upsampling with augmentation, the results were severely lagging in evaluating the non-toxic text. Table 2 demonstrates that the DistilBERT model with data upsampling and augmentation trained on 512 tokens can achieve reasonable performance on both toxic and non-toxic text. Therefore, we chose this model as our final classification model used for extracting the NonToxicScore in style transfer task.
+
+\begin{table*}[ht]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llllll}
+\hline
+ {Model: DistilBERT - 2 layers} &{} &APPDIA Toxic Texts &{} &APPDIA Non-Toxic Texts &{} \\
+\hline
+Sampling Methodology &Max Length &Accuracy &NonToxic Score &Accuracy &NonToxic Score \\
+\hline
+Undersampling &64 &93.5 &9.2 &66.3 &64.5 \\
+Undersampling &512 &91.0 &9.1 &63.3 &63.0 \\
+Upsampling &64 &89.0 &7.8 &82.4 &78.4 \\
+Upsampling &512 &88.9 &8.4 &83.4 &79.4 \\
+\hline
+\end{tabular}}
+Table 2:  NonToxicScore and classification evaluation on APPDIA test dataset with DistilBERT models. The model trained with 2 hidden layers, upsampling technique and 512 tokens could classify both toxic text and non-toxic text well, and achieve the highest NonToxicScore for the non-toxic text.
+\end{table*}
+
+While evaluating the performance of the chosen DistilBERT model in calculating NonToxicScore, we found that the model performed well in identifying sentences that contained toxic words. However, the model could misclassify non-toxic sentences as being toxic, particularly for sentences that sounded authoritative or contained strong opinions in their context which materialized with low NonToxicScore scores as shown in Appendix F. The classification model also had difficulty classifying some toxic texts, particularly for sentences that did not contain offensive words. These sentences achieved high NonToxicScores although their labels were “toxic”. Upon closer examination, it appears that the real toxicity seems to be grounded in real world context not present in the sentences. For example, the action of “wipes voting machines clean” may not seem toxic by itself, but in the context of the 2020 election, this may provoke people. In another example, the phrase “spewing logical fallacies” may not be toxic by itself since it is just an action, but to understand the connotation of “spewing” as opposed to other verbs such as “accusing” while grounded in who tend to fall for “logical fallacies” in the real world could be considered offensive. These examples highlight the subjectivity of text classification, which can vary among different  annotators which may also sway our models.
+
+\subsection{Text Style Transfer Task}
+Comparing the toxic texts and their pair-wised human annotated text from the APPDIA test set, the ROUGE-1 scores of 68.9\%, and the NonToxicScore of 79.4\% was evaluated on the annotated text (Table 4). This is as expected since the annotated texts have offensive words removed or completely rewritten by human experts. In addition, due to the bias created from the Jigsaw dataset and discussed above, the NonToxicScore evaluated on the APPDIA dataset was not 100\%. It’s important to note that this NonToxicScore was highest compared to the outputs of all of our models and serves as the upper-bound benchmark for our models. 
+
+When comparing the generated texts from different models with the human annotated texts in Table 3, we could see the encoder - decoder models achieve higher ROUGE scores but with lower NonToxicScores than the generative language models. This tradeoff indicates that the encoder - decoder models tend to preserve the meaning of the original text well, whereas the generative language models tend to generate non-toxic words better. Fine tuning of larger models in both architectures also yields better ROUGE scores and NonToxicScore. Fine tuned BART large has the best ROUGE scores with decent NonToxicScore, and fine tuned GPT-Neo 1.3B has the best NonToxicScore with decent ROUGE scores.
+
+\begin{table*}[ht]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llllll}
+\hline
+Evaluated Against Original Text \\
+\hline
+ Model &ROUGE1 &ROUGE2 &ROUGEL &NonToxicScore \\
+ None (Non-toxic Annotated Text against Original Toxic Text)
+&68.9 &56.1 &68.3 &79.4 \\
+\hline
+Evaluated Against Annotated Text\\
+\hline
+Model &ROUGE1 &ROUGE2 &ROUGEL &NonToxicScore \\
+\hline
+Baseline - GPT2 - Few Shot &11.8 &1.7 &9.9 &57.3 \\
+GPT2 - Fine tuned &27.8 &21.1 &27.5 &67.4 \\
+GPT-Neo 2.7B - Few Shot &29.8 &9.6 &27.1 &37.1 \\
+GPT-Neo 1.3B - Fine tuned &61.8 &48.2 &61.4 &74.9 \\
+T5 - Fine tuned &66.8 &54.7 &66.4 &39.3 \\
+BART - Dual Encoders with Masking &59.8 &47.9 &59.5 &57.3 \\
+BART base - Fine tuned &69.7 &57.8 &69.2 &57.6 \\
+BART large - Fine tuned &71.0 &59.3 &70.5 &58.2 \\
+\hline
+\end{tabular}}
+Table 3:  Neutralize toxic text model evaluation results on APPDIA test dataset.
+\end{table*}
+
+\subsection{Generative Language Models}
+
+With generative models, we used few-shot GPT2 as baseline. Following experiments included zero-shot fine-tuned GPT2, few-shot 2.7B parameter GPT-Neo, and zero-shot fine-tuned 1.3B parameter GPT-Neo. 
+
+Without tuning, few-shot GPT2 achieved an impressive NonToxicScore of 57.3\% despite having unremarkable ROUGE scores. This is expected, since GPT2 would not know how to detoxify source sentences according to the style of the annotator. As seen in the examples in Appendix A, few-shot GPT2 generates sensible and grammatically sound text. However, the tokens that it generated could be very long and sometimes had different meaning than the original input texts. Therefore, the elevated NonToxicScore was a combination of its attempt to detoxify from few-shot examples and of simply having more non-toxic tokens. There are instances that few-shot GPT2 actually made the result more toxic, as demonstrated in Table 6 of Appendix A. This could be the result of having more toxic and vulgar language in the few-shot examples selected.
+
+We anticipated zero-shot fine-tuned GPT2 to outperform few-shot base GPT2 in all metrics, which Table 4 confirms. The zero-shot approach generated more neutral text with higher NonToxicScores (Appendix A). Another distinction was that the output length in zero-shot GPT2 closely matched the original text length. While fine-tuning enabled GPT2 to produce less toxic and fluent results closer to the annotated output (Appendix A), the semantics occasionally deviated. For example, "on drugs" in Table 5 was interpreted as substance use instead of "crazy" or "illogical." Thus, while less toxic and closer to the original text, the model missed the correct semantics.
+
+We hoped that the few-shot GPT-Neo model would produce slightly better results than the few-shot GPT2 model, however, the results were quite surprising. Given the same prompts as the few-shot GPT2 model, the GPT-Neo model scored quite low in NonToxicScore, failing to remove toxicity. Table 3 shows that the few-shot GPT-Neo achieved the lowest NonToxicScore among all the models attempted. With a few examples in Appendix A, it appears that the few-shot GPT-Neo model actually exacerbated the toxic tone of the original text by inserting vulgarity into the output with better than expected readability. Our leading hypothesis is that prompt-engineering could have benefited this approach since it appears that GPT2 and GPT-Neo contextualized the prompts very differently, such that GPT2 contextualized our prompt more correctly than GPT-Neo. 
+
+Our final generative model experiment involved fine-tuning the GPT-Neo model to perform zero-shot inference. We hypothesized that if GPT-Neo can generate such coherent and easy to read text despite the toxicity from few-shot learning, fine-tuning the GPT-Neo model should produce readable, coherent, and non-toxic text. Shown in Table 4, compared to the previous attempts, the results of fine-tuning the GPT-Neo model achieved the best NonToxicScore, demonstrating the success in fine-tuning the model. Compared to the other generative models, this approach achieved the highest ROUGE scores in the GPT family. The examples in Appendix A demonstrates that the generative model is achieving this by either removing or replacing offensive words and phrases, or negating the antonym of the offensive word. In short, it appears that fine-tuning the GPT-Neo model resulted in the correct contextualization of the semantics of the original text.
+
+\subsection{Encoder-Decoder Models}
+
+For Encoder-Decoder models, we performed fine-tuning three main architectures: T5, BART and the custom dual-encoders BART model.
+
+For T5, the model is able to neutralize some of the toxic words by removing them from the sentences or replacing them with synonyms, even though it could not remove all toxic words completely. For example, some offensive words still exist in the generated texts such as “stupid”, “jerk”, “hate”, etc. In absence of toxic words, the model is unable to learn the vocabulary and neutralize the sentence effectively. As a result, the generated texts tend to resemble the original toxic texts closely. The T5 model yields lower NonToxicScore than the other encoder-decoder models. This is because most of the generated sentences still have negative connotations or hostile tones.
+
+Fine-tuning BART models gave us the best ROUGE scores. BART large was able to yield the highest ROUGE scores out of all models, and its generated texts had the most similar tokens to the human annotated texts. However, similar to the T5 model, when toxic words are absent from the text, the model struggles to neutralize the sentences. The tones for some of the generated sentences are still slightly hostile, negative or sound authoritative. Therefore, the NonToxicScore for BART large is lower than GPT-Neo.
+
+Despite our expectations, the dual-encoder BART model produces ROUGE scores that are slightly lower than the original BART base models. However, it’s NonToxicScore is comparable. The decrease in ROUGE scores can be attributed to the model's tendency to shorten sentences and omit some context from the source text.
+
+\subsection{Tradeoffs Generative Language Models vs Encoder-Decoder Model}
+The choice between generative language models and encoder-decoder models entails a series of tradeoffs. In our research, we found that our best generative language model, the fine-tuned 1.3B parameter GPT-Neo model, excelled in detoxifying text and produced output with a more neutral tone and style. However, this model could generate quite different texts than the original text in some cases, even though the meaning is not significantly different. For example, it transfers “Shut up, atheism is gay” to “Please don't talk”, such examples show why the model has lower ROUGE scores than the best encoder-decoder model, the BART large model. On the other hand, the fine-tuned BART large model performed better in preserving semantics, ensuring that the output remains closer to the original intent. Despite this advantage, the encoder-decoder model may not be as effective in detoxifying the text to the same extent as generative models (Figure 2). Consequently, selecting the appropriate model depends on the desired balance between detoxification and semantic preservation, as neither model performs exceptionally well in both domains.\\
+<< insert pics>>
+
+\section{Next Steps}
+\subsection{Text-Style Disentanglement}
+The disentanglement architecture was an attempt at a novel approach to this problem and more work needs to be done to successfully disentangle semantics from tone. We have learned from our experiment that the disentanglement architecture would have to retrain either the decoder or the encoder from scratch, since we proposed to use BERT encoder and GPT decoder. Two alternatives to this approach is to pretrain an extremely large mapping layer between BERT outputs to GPT tokens or leverage the BART tokenizer. 
+In addition, since this is a novel architecture, the decoder layers would need to be trained on large corpus in order to sound grammatically correct and readable. That would require pre-training on large corpus’ such as Wikipikea and Common Crawl.
+
+\section{Conclusion}
+
+In the contemporary online landscape, text detoxification has emerged as a critical issue, as improper content moderation faces scrutiny and potential censorship accusations. We addressed this problem by considering it as a general text-generation issue using generative models and as a translation problem employing encoder-decoder architectures like T5 and BART. Our experiments revealed that decoder-only generative models produced more fluent, albeit semantically altered, results, while encoder-decoder models maintained semantic correctness at the expense of detoxification quality. Although the optimal approaches identified in this research involve tradeoffs, we aspire to eventually discover a solution that eliminates the need to compromise between semantic preservation and detoxification.
+
+% \section{References}
+
+\nocite{brown2020language,Ascher2019UnmaskingHO,10.1145/3359294,atwell-etal-2022-appdia,cheng-etal-2020-contextual,app13020726,devlin2019bert,sanh2020distilbert,noauthororeditor,Black2021GPTNeoLS,raffel2020exploring,lewis2019bart,beutel2017data}
+
+\label{sec:Ascher} 
+\label{sec:Jhaver}
+\label{sec:Gehman}
+\label{sec:Brown}
+\label{sec:Atwell}
+\label{sec:Tegene}
+\label{sec:Cheng}
+\label{sec:Gong}
+\label{sec:Luo}
+\label{sec:Lewis}
+\label{sec:Raffel}
+
+% Entries for the entire Anthology, followed by custom entries
+\bibliography{anthology,custom}
+\bibliographystyle{acl_natbib}
+
+\clearpage
+\appendix
+
+\section{Appendix}
+\label{sec:appendix}
+
+\subsection{Appendix A}
+
+\begin{table*}[!hbt]
+\centering
+\small
+\begin{tabularx}{\textwidth}{l|X}
+\hline
+ Original Comment &the f***.... you are on drugs	 \\
+ Annotated Text &uh..... you are not being realistic	\\
+ Baseline - GPT2 - Few Shot &I don't care what you think about me, I'm here to help you out. I am here for you. \\
+GPT2 - Fine tuned &ive been on drugs for years \\
+GPT-Neo 2.7B - Few Shot &the f***ing f*** are you on? \\
+GPT-Neo 1.3B - Fine tuned &What.... are you on drugs \\
+T5 - Fine tuned &you are on drugs \\
+BART - Dual Encoders with Masking &the U.S. you are on drugs \\
+BART base - Fine tuned &you are on drugs \\
+BART large - Fine tuned &the f***.... you are on drugs	\\
+\hline
+\end{tabularx}
+Table 5: Example outputs
+\end{table*}
+
+
+\begin{table*}[ht]
+\centering
+\small
+\begin{tabularx}{\textwidth}{l|X}
+\hline
+Original Comment &So maybe you should be more retarded.\\	
+Annotated Text &So maybe you should be more backward\\
+Baseline - GPT2 - Few Shot &I don't know what to do with you. You're just a f***ing moron. I'm just going to give you the benefit of the doubt.\\
+GPT2 - Fine tuned &ive never seen anything like this \\
+GPT-Neo 2.7B - Few Shot &So you're a f***ing retard.\\
+GPT-Neo 1.3B - Fine tuned &So maybe you shouldn't be smart \\
+T5 - Fine tuned &So maybe you should be more retarded.\\
+BART - Dual Encoders with Masking &So maybe you should be more careful.\\
+BART base - Fine tuned &So maybe you should be more mature. \\
+BART large - Fine tuned &So maybe you should be more backward.\\
+\hline
+\end{tabularx}
+Table 6: Example outputs
+\end{table*}
+
+\subsection{Appendix F}
+\begin{table*}[ht]
+\centering
+\small
+\begin{tabularx}{\textwidth}{X|l|l|l}
+ \hline
+ Texts& Label &Predicted &Non Toxic Score\\
+ \hline
+ There’s plenty of evidence, it’s exactly why they won’t allow forensic audits   *wipes voting machines clean of their records*   & Toxic    &Non-Toxic &97.6\\
+ Also there are women like this but they don’t write about it like this on ducking reddit.&   Toxic  & Non-Toxic   &99.0\\
+ Do you have a substantial counter argument or are you just spewing logical fallacies? &Toxic & Non-Toxic &  87.3\\
+ Stop dude. Worst of the worst!    &Non-Toxic & Toxic & 33.3\\
+ They literally steal and sell babies in convenience stores. Sorry but most are undesirables. (a small \% escape their culture and integrate) &Non-Toxic  &Toxic &28.6\\
+ I would not say nuts...it just looks very suspicious. Either way, the dude is totally unacceptable. & Non-Toxic  & Toxic   &19.9\\
+ \hline
+\end{tabularx}
+Table 3: Example of wrong classifications using the best DistilBERT model on APPDIA test dataset. The model mostly classifies a comment as toxic when seeing negative words and meaning in the context.
+\end{table*}
+
+\end{document}
